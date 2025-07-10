@@ -86,7 +86,7 @@ def translate_groups(groups, model, target_lang="Chinese", batch_size=20):
         prompt = (
             f"Translate the following English dialogue into natural, fluent spoken {target_lang}.\n"
             f"Keep the meaning clear, complete, and connected.\n"
-            f"Treat capitalized words in the middle of a sentence as regualr words and translate them in the same sentence they are in.\n"
+            f"If you see a short phrase that starts with 'that', 'which', or 'who', do NOT attach it to the previous sentence — keep it as its own line.\n"
             f"Do not reorder phrases or clauses inside a sentence — each part must stay in its original place.\n"           
             f"Preserve all punctuation marks — including commas, periods, question marks, and exclamation marks — exactly as in the original; do not add, remove, or reorder them.\n"
             f"Always use full-width Chinese commas （，） instead of English commas (,) in the translation. Keep them in exactly the same position.\n"
