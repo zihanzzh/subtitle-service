@@ -1,0 +1,25 @@
+# Ignore virtual environments & Python caches
+.venv/
+__pycache__/
+
+# Ignore subtitles
+*.srt
+
+# Ignore videos
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Ignore audio files
+*.aac
+*.wav
+*.mp3
+
+# Ignore secrets
+gemini_key.txt
+
+# Ignore editor temp files
+*.swp
+*.swo
+*~
