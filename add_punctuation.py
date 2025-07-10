@@ -18,37 +18,36 @@ def add_terminal_punctuation(srt_path, output_path):
             continue
 
         # === STEP 0: 先执行补句号（保持原写法）===
-        if line_strip.endswith('...') or line_strip[-1] in {'.', '?', '!', '…', ',', ';', ':'}:
+        if line_strip.endswith('...') or line_strip.endswith('……') or line_strip[-1] in {'.', '?', '!', '…', ',', ';', ':'}:
             pass
         else:
             line_strip += '.'
 
-        # === STEP 1: 查找所有强标点 ===
-        strong_punct_pattern = r'(\.\.\.|…|[.?!])'
+        # === STEP 1: 查找所有强标点（优先长匹配）===
+        strong_punct_pattern = r'(……|\.{3}|…|[.?!])'
         strong_puncts = list(re.finditer(strong_punct_pattern, line_strip))
 
         if len(strong_puncts) >= 2:
-            working_line = line_strip  # 每次循环都更新
+            working_line = line_strip
 
-            # === STEP 1: 从后往前，每个都单独切后半句 + 降小写 + 删标点 ===
+            # === STEP 1: 从后往前，每个都切后半句 + 降小写 + 删标点 ===
             for m in reversed(strong_puncts[:-1]):
                 punct_pos = m.start()
+                punct_end = m.end()  # 核心：要用 end() 保证多字符符号一次性删除
 
-                # 切后半句
-                after_part = working_line[punct_pos+1:].strip()
+                after_part = working_line[punct_end:].strip()
 
-                # 查找首个大写词（含撇号）
+                # 找首个大写词（含撇号）
                 m_word = re.search(r"\b([A-Z][a-z']+)\b", after_part)
                 if m_word:
                     word = m_word.group(1)
                     after_part = after_part.replace(word, word.lower(), 1)
 
-                # 拼回 + 删标点
                 working_line = working_line[:punct_pos].rstrip() + ' ' + after_part
 
             line_strip = working_line.strip()
 
-        # === STEP 2: 不重复补句号 ===
+        # === STEP 2: 不再重复补句号 ===
         new_lines.append(line_strip)
 
     # === 写回文件 ===
