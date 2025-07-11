@@ -12,13 +12,25 @@ def time_to_ms(t):
     s, ms = s_ms.split(",")
     return (int(h) * 3600 + int(m) * 60 + int(s)) * 1000 + int(ms)
 
-# group the subtitle blocks, if <= 50ms, put them into one sentence.
-# return a list of sentence groups. Each group contains one or more subtitle blocks.
-def group_subtitles(srt_path, time_tolerance_ms=50):
+# convert milliseconds back to SRT time string.
+def ms_to_time(ms):
+    s, ms = divmod(ms, 1000)
+    m, s = divmod(s, 60)
+    h, m = divmod(m, 60)
+    return f"{h:02}:{m:02}:{s:02},{ms:03}"
+
+# Group subtitle blocks by time continuity and max lines.
+# Return list of grouped blocks with updated time ranges.
+def group_subtitles(
+    srt_path,
+    time_tolerance_ms=50,
+    max_lines_per_group=10
+):
+    # step 1: parse SRT into blocks
     with open(srt_path, 'r', encoding='utf-8') as f:
         lines = f.read().splitlines() #read all the lines and store them into list lines
 
-    blocks = []
+    raw_blocks = []
     i = 0
     while i < len(lines):
         if lines[i].strip().isdigit():
@@ -30,7 +42,7 @@ def group_subtitles(srt_path, time_tolerance_ms=50):
                 text_lines.append(lines[i].strip())
                 i += 1
             start, end = time_range.split(" --> ")
-            blocks.append({
+            raw_blocks.append({
                 "index": index,
                 "start": start,
                 "end": end,
@@ -38,12 +50,12 @@ def group_subtitles(srt_path, time_tolerance_ms=50):
             })
         i += 1
 
-    # Grouping based on time continuity
+    # Step 2: Grouping based on time continuity
     groups = []
-    current_group = [blocks[0]]
-    for j in range(1, len(blocks)):
+    current_group = [raw_blocks[0]]
+    for j in range(1, len(raw_blocks)):
         prev = current_group[-1]
-        curr = blocks[j]
+        curr = raw_blocks[j]
         prev_end = time_to_ms(prev["end"])
         curr_start = time_to_ms(curr["start"])
         gap = curr_start - prev_end
@@ -57,7 +69,38 @@ def group_subtitles(srt_path, time_tolerance_ms=50):
     if current_group:
         groups.append(current_group)
     
-    return groups    
+    # Step 3: enforce max lines per group
+    final_groups = []
+    for group in groups:
+        temp_group = []
+        for block in group:
+            temp_group.append(block)
+            total_lines = sum(len(b["lines"]) for b in temp_group)
+            if total_lines >= max_lines_per_group:
+                # Split out this chunk
+                final_groups.append(temp_group)
+                temp_group = []
+        if temp_group:
+            final_groups.append(temp_group)
+       
+    # Step 4: Recalculate start/end time for each final group
+    grouped_results = []
+    for subgroup in final_groups:
+        merged_lines = []
+        for block in subgroup:
+            merged_lines.extend(block["lines"])
+
+        start_time = subgroup[0]["start"]
+        end_time = subgroup[-1]["end"]
+
+        grouped_results.append({
+            "start": start_time,
+            "end": end_time,
+            "lines": merged_lines
+        })
+
+    print(f"Grouping complete: {len(grouped_results)} groups created.")
+    return grouped_results
 
 # Setup Gemini
 def load_gemini_api_key(path="gemini_key.txt"):
@@ -68,134 +111,137 @@ def setup_gemini(api_key):
     genai.configure(api_key=api_key)
     return genai.GenerativeModel("models/gemini-2.0-flash-lite")
 
-# Translate in batches and split back
+# Translates grouped subtitles in batches
+# Each group keeps its time range and combined lines.
+# Returns a list of translated batch strings.
 def translate_groups(groups, model, target_lang="Chinese", batch_size=20):
-    # split the total groups into batches of batchsize
+
+    all_translated_batches = []
     for i in range(0, len(groups), batch_size):
         batch = groups[i : i + batch_size]
 
-        # Combine all blocks in this batch into one big text
-        source_texts = []
+        # Build batch text: each block = time range + content
+        batch_text = ""
         for group in batch:
-            for block in group:
-                source_texts.append(" ".join(block["lines"]))
+            time_range = f"{group['start']} --> {group['end']}"
+            content = " ".join(group["lines"]).strip()
+            batch_text += f"{time_range}\n{content}\n\n"  # Double line break after each block
 
-        full_text = " ".join(source_texts)
+        # Build prompt
+        prompt = f"""
+Translate the following English subtitle blocks into natural, fluent spoken {target_lang}.
 
-        # Send to Gemini
-        prompt = (
-            f"Translate the following English dialogue into natural, fluent spoken {target_lang}.\n"
-            f"Keep the meaning clear, complete, and connected.\n"
-            f"If you see a short phrase that starts with 'that', 'which', or 'who', do NOT attach it to the previous sentence — keep it as its own line.\n"
-            f"Do not reorder phrases or clauses inside a sentence — each part must stay in its original place.\n"           
-            f"Preserve all punctuation marks — including commas, periods, question marks, and exclamation marks — exactly as in the original; do not add, remove, or reorder them.\n"
-            f"Always use full-width Chinese commas （，） instead of English commas (,) in the translation. Keep them in exactly the same position.\n"
-            f"Use professional, context-appropriate wording for any official terms (for example, legal, sports, or technical jargon) so they match real-world usage in {target_lang}.\n"
-            f"Keep names of people or places consistent throughout.\n"
-            f"Remove any filler words like 'like', 'uh', 'you know', unless they are needed for natural spoken style.\n"
-            f"Return only the final translation as one continuous text, with no added comments or extra formatting.\n\n"
-            f"{full_text}"
-        ) 
-        response = model.generate_content(prompt)
-        translated = response.text.strip()
+== INSTRUCTIONS ==
+- For each block, keep the original time range exactly as given, at the top.
+- Below the time range, provide the translated text for that block.
+- Keep blocks in the same order — do NOT combine or reorder them.
+- Add natural Chinese punctuation marks where appropriate to ensure clear, fluent reading. You do NOT need to preserve the exact punctuation from the original — translate naturally.
+- Use full-width Chinese commas （，） instead of English commas (,).
+- Keep names, terms, and proper nouns consistent throughout.
+- Remove any filler words like 'like', 'uh', 'you know' unless needed for natural flow.
+- After each block, insert exactly one blank line to separate blocks.
+- Do NOT add any extra comments or explanations — only the time range and translated text for each block.
+== CONTENT ==
+{batch_text}
+""".strip()
+        # send to Gemini
+        try:
+            response = model.generate_content(prompt)
+            translated_text = response.text.strip()
+            print(f"[Batch {i // batch_size + 1}] Translation complete. Returned {len(translated_text)} chars.")
+        except Exception as e:
+            print(f"[Batch {i // batch_size + 1}] Translation failed: {e}")
+            translated_text = ""
 
-        # Flatten blocks: we know exactly how many blocks there are
-        flat_blocks = [block for group in batch for block in group]
+        # Add raw translated text to final results
+        all_translated_batches.append(translated_text)
 
-        # Split the translated text into exact segment
-        split_segments = split_and_assign_translation(flat_blocks, translated)
-    
-        print(f"Translated batch of {len(flat_blocks)} blocks.")        
+        # Pause to respect rate limits
         time.sleep(random.uniform(5, 7))
-
-    return groups
-
-# Combined function that splits translation and assigns to blocks with proper shifting when carryover occurs from comma-ending blocks
-def split_and_assign_translation(flat_blocks, translated_text):
-    # 1. Split only on sentence-ending punctuation
-    segments = re.split(r'(……|。|？|！|\.{3}|…)', translated_text)
-    segments = ["".join(pair) for pair in zip(segments[::2], segments[1::2])] + segments[len(segments)//2*2:]
-    # Remove empty
-    segments = [s.strip() for s in segments if s.strip()]
-
-    # 2. Ensure we have enough segments for blocks
-    num_blocks = len(flat_blocks)
-    num_segments = len(segments)
-
-    while num_segments < num_blocks:
-        segments.append(segments[-1] if segments else "")
-        num_segments += 1
     
-    while num_segments > num_blocks:
-        segments[-2] += segments[-1]
-        segments.pop()
-        num_segments -= 1
+    return all_translated_batches
 
-    # 3. Assign segments to blocks with carry-over handling
-    carry_over = ""
-    original_segments = segments[:]  # Keep a copy of original segments
-    block_index = 0
-    segment_index = 0
 
-    while block_index < len(flat_blocks):
-        block = flat_blocks[block_index]
-        # Determine what segment to use for this block
-        if carry_over:
-            # Use carry-over from previous block
-            current_segment = carry_over
-            carry_over = ""
-        else:
-            # Use the next available segment
-            if segment_index < len(original_segments):
-                current_segment = original_segments[segment_index]
-                segment_index += 1
-            else:
-                current_segment = ""
+# Split each translated block into smaller chunks by strong punctuation,
+# calculate proportional time ranges, and return final subtitle blocks.
+def split_and_assign_translation(translated_batches, max_chars_per_block=28):
+    final_blocks = []
 
-        # Check if this block originally ended with comma
-        original_line = " ".join(block["lines"]).strip()
-        original_punct = original_line[-1] if original_line else ""
+    for batch_text in translated_batches:
+        # Split the batch into blocks by blank line
+        blocks = re.split(r'\n\s*\n', batch_text.strip())
 
-        if original_punct == ",":
-            # Handle comma-ending block
-            expected_commas = original_line.count(",")
-            translated_commas = current_segment.count("，")
-            
-            if translated_commas >= expected_commas and expected_commas > 0:
-                # Split by Chinese commas
-                parts = current_segment.split("，")
-                # Keep the first 'expected_commas' parts with commas
-                kept_parts = []
-                for i in range(expected_commas):
-                    if i < len(parts):
-                        kept_parts.append(parts[i] + "，")
+        for block in blocks:
+            lines = block.strip().split("\n")
+            if len(lines) < 2:
+                continue
+
+            time_range = lines[0].strip()
+            paragraph = "".join("".join(lines[1:]).split())  # Remove extra spaces/newlines
+
+            # Parse time range
+            start_str, end_str = [s.strip() for s in time_range.split("-->")]
+            start_ms = time_to_ms(start_str)
+            end_ms = time_to_ms(end_str)
+            total_duration = end_ms - start_ms
+
+            # Split paragraph by strong punctuation
+            segments = re.split(r'(……|。|？|！|\!|\.{3}|…)', paragraph)
+            segments = ["".join(pair) for pair in zip(segments[::2], segments[1::2])] + segments[len(segments)//2*2:]
+            segments = [s.strip() for s in segments if s.strip()]
+
+            # Accumulate segments into sub-blocks
+            current_block = ""
+            current_length = 0
+            used_chars = 0
+            sub_blocks = []
+
+            seg_idx = 0
+            while seg_idx < len(segments):
+                seg = segments[seg_idx]
+                seg_len = len(seg)
+                if current_length + seg_len <= max_chars_per_block:
+                    current_block += seg
+                    current_length += seg_len
+                    used_chars += seg_len
+                    seg_idx += 1
+                else:
+                    if current_block:
+                        sub_blocks.append(current_block)
+                        current_block = ""
+                        current_length = 0
+                    else:
+                        # Single segment longer than max, force split
+                        sub_blocks.append(seg)
+                        used_chars += seg_len
+                        seg_idx += 1
+
+            if current_block:
+                sub_blocks.append(current_block)
+
+            # Calculate new time ranges proportionally
+            chunk_start = start_ms
+            for sb in sub_blocks:
+                chunk_chars = len(sb)
+                proportion = chunk_chars / max(used_chars, 1)
+                chunk_duration = int(proportion * total_duration)
+                chunk_end = chunk_start + chunk_duration
+
+                # prevent overlap or reverse
+                if chunk_end > end_ms or sb == sub_blocks[-1]:
+                    chunk_end = end_ms
                 
-                # Join remaining parts as carry-over
-                if len(parts) > expected_commas:
-                    remaining_parts = parts[expected_commas:]
-                    carry_over = "，".join(remaining_parts).strip()
-                    # Remove leading comma if it exists
-                    if carry_over.startswith("，"):
-                        carry_over = carry_over[1:].strip()
+                final_blocks.append({
+                    "start": ms_to_time(chunk_start),
+                    "end": ms_to_time(chunk_end),
+                    "lines": [sb]
+                })
 
-                # Assign the kept parts to current block
-                block["lines"] = ["".join(kept_parts).rstrip("，") + "，"]
-            else:
-                # Not enough commas, just assign the whole segment
-                block["lines"] = [current_segment]
-        else:
-            # Normal block, assign the segment as is
-            block["lines"] = [current_segment]
+                chunk_start = chunk_end  # next chunk starts where this ends
 
-        block_index += 1
+    print(f"Split and assign complete: {len(final_blocks)} blocks generated.")
+    return final_blocks
 
-        
-    return flat_blocks
-
-
-# flattens grouped subtitle blocks into a single list of blocks. Keep their original order for writing to.srt
-def flatten_groups(groups):
-    return [block for group in groups for block in group]
 
 def write_srt_file(blocks, output_path):
     with open(output_path, "w", encoding="utf-8") as f:

@@ -2,13 +2,12 @@ import argparse  #define command line like --input
 import subprocess #runs ffmpeg
 import os
 from transcriber import transcribe_audio
-from add_punctuation import add_terminal_punctuation
 from translator import (
     group_subtitles,
     load_gemini_api_key,
     setup_gemini,
     translate_groups,
-    flatten_groups,
+    split_and_assign_translation,
     write_srt_file
 )
 
@@ -54,11 +53,9 @@ def main():
   #step 2: convert voice to transcribed text
   transcribe_audio (audio_file, lang = args.lang)
 
-  #before translate, add . for the lines that do not
-  add_terminal_punctuation("temp_audio.srt", "temp_audio_punctuated.srt")
-
   # Step 3: Translate subtitles
-  srt_file = "temp_audio_punctuated.srt"
+  srt_file = "temp_audio.srt"
+  
   groups = group_subtitles(srt_file)
   print(f"Loaded {len(groups)} subtitle groups.")
 
@@ -67,11 +64,11 @@ def main():
   model = setup_gemini(api_key)
 
   # Translate
-  translated_groups = translate_groups(groups, model, target_lang="Chinese")
+  translated_batches = translate_groups(groups, model, target_lang="Chinese")
 
-  # Flatten and write to new .srt file
-  flattened_blocks = flatten_groups(translated_groups)
-  write_srt_file(flattened_blocks, "translated.srt")
+  # Split and assign new time ranges, then write final srt
+  final_blocks = split_and_assign_translation(translated_batches)
+  write_srt_file(final_blocks, "translated.srt")
 
   print("Translation complete. Output saved to translated.srt")
 
