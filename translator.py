@@ -21,10 +21,13 @@ def ms_to_time(ms):
 
 # Group subtitle blocks by time continuity and max lines.
 # Return list of grouped blocks with updated time ranges.
+# Group subtitle blocks by time continuity and max lines.
+# Return list of grouped blocks with updated time ranges.
 def group_subtitles(
     srt_path,
     time_tolerance_ms=50,
-    max_lines_per_group=10
+    max_lines_per_group=10,
+    max_group_duration_sec=10
 ):
     # step 1: parse SRT into blocks
     with open(srt_path, 'r', encoding='utf-8') as f:
@@ -76,7 +79,11 @@ def group_subtitles(
         for block in group:
             temp_group.append(block)
             total_lines = sum(len(b["lines"]) for b in temp_group)
-            if total_lines >= max_lines_per_group:
+            duration_ms = (
+                time_to_ms(temp_group[-1]["end"]) - time_to_ms(temp_group[0]["start"])
+            )
+            duration_sec = duration_ms / 1000.0
+            if total_lines >= max_lines_per_group or duration_sec >= max_group_duration_sec:
                 # Split out this chunk
                 final_groups.append(temp_group)
                 temp_group = []
@@ -93,11 +100,14 @@ def group_subtitles(
         start_time = subgroup[0]["start"]
         end_time = subgroup[-1]["end"]
 
-        grouped_results.append({
-            "start": start_time,
-            "end": end_time,
-            "lines": merged_lines
-        })
+
+        # skip groups with no actual lines
+        if merged_lines:
+            grouped_results.append({
+                "start": start_time,
+                "end": end_time,
+                "lines": merged_lines
+            })
 
     print(f"Grouping complete: {len(grouped_results)} groups created.")
     return grouped_results
@@ -133,8 +143,9 @@ Translate the following English subtitle blocks into natural, fluent spoken {tar
 
 == INSTRUCTIONS ==
 - For each block, keep the original time range exactly as given, at the top.
-- Below the time range, provide the translated text for that block.
-- Keep blocks in the same order — do NOT combine or reorder them.
+- Below the time range, provide the translated text for ONLY that block's text.
+- DO NOT merge, combine, split, or reorder content between different blocks. The order of sentences must remain EXACTLY the same as given — do NOT reorder for storytelling or grammar reasons.
+- If a block has no dialogue, return the time range as is and leave the text blank.
 - Add natural Chinese punctuation marks where appropriate to ensure clear, fluent reading. You do NOT need to preserve the exact punctuation from the original — translate naturally.
 - Use full-width Chinese commas （，） instead of English commas (,).
 - Keep names, terms, and proper nouns consistent throughout.
@@ -186,7 +197,7 @@ def split_and_assign_translation(translated_batches, max_chars_per_block=28):
             total_duration = end_ms - start_ms
 
             # Split paragraph by strong punctuation
-            segments = re.split(r'(……|。|？|！|\!|\.{3}|…)', paragraph)
+            segments = re.split(r'(……|。|？|！|\!|\.{3}|…|”|，)', paragraph)
             segments = ["".join(pair) for pair in zip(segments[::2], segments[1::2])] + segments[len(segments)//2*2:]
             segments = [s.strip() for s in segments if s.strip()]
 
