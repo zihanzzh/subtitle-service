@@ -23,3 +23,7 @@ gemini_key.txt
 *.swp
 *.swo
 *~
+
+# Ignore cuDNN archive and extracted folder
+cudnn-linux-x86_64-8.9.7.29_cuda12-archive.tar.xz
+cudnn-linux-x86_64-8.9.7.29_cuda12-archive/
