@@ -3,7 +3,8 @@ import google.generativeai as genai
 import os
 import time
 import random
-
+import json
+import http.client
 
 # time conversion
 def time_to_ms(t):
@@ -173,6 +174,60 @@ Translate the following English subtitle blocks into natural, fluent spoken {tar
     return all_translated_batches
 
 
+def translate_groups_deepseek(groups, model_name="deepseek-r1:70b", target_lang="Chinese", batch_size=20):
+    all_translated_batches = []
+
+    for i in range(0, len(groups), batch_size):
+        batch = groups[i : i + batch_size]
+
+        batch_text = ""
+        for group in batch:
+            time_range = f"{group['start']} --> {group['end']}"
+            content = " ".join(group["lines"]).strip()
+            batch_text += f"{time_range}\n{content}\n\n"
+
+        prompt = f"""
+Translate the following English subtitle blocks into fluent spoken {target_lang}.
+
+== INSTRUCTIONS ==
+- For each block, copy the original time range exactly as given and place it at the top line, using the format: HH:MM:SS,mmm --> HH:MM:SS,mmm (with --> exactly in between, no extra spaces or newlines).
+- Below the time range, provide the translated text for ONLY that block's text.
+- DO NOT merge, combine, split, or reorder content between different blocks. The order of sentences must remain EXACTLY the same as given 
+— do NOT reorder for storytelling or grammar reasons.
+- If a block has no dialogue, return the time range as is and leave the text blank.
+- Add natural Chinese punctuation marks where appropriate to ensure clear, fluent reading. You do NOT need to preserve the exact punctuation from the original — translate naturally.
+- Use full-width Chinese commas （，） instead of English commas (,).
+- Keep names, terms, and proper nouns consistent throughout.
+- Remove any filler words like 'like', 'uh', 'you know' unless needed for natural flow.
+- After each block, insert exactly one blank line to separate blocks.
+- Do NOT add any extra comments or explanations — only the time range and translated text for each block.
+
+Content:
+{batch_text}
+""".strip()
+
+        # Use Ollama API to call DeepSeek
+        conn = http.client.HTTPConnection("localhost", 11434)
+        headers = {"Content-Type": "application/json"}
+        payload = json.dumps({
+            "model": model_name,
+            "prompt": prompt,
+            "stream": False
+        })
+        conn.request("POST", "/api/generate", payload, headers)
+        res = conn.getresponse()
+        data = res.read().decode("utf-8")
+        try:
+            translated_text = json.loads(data)["response"].strip()
+            print(f"[DeepSeek Batch {i // batch_size + 1}] Translation complete.")
+        except Exception as e:
+            print(f"[DeepSeek Batch {i // batch_size + 1}] Translation failed: {e}")
+            translated_text = ""
+
+        all_translated_batches.append(translated_text)
+
+    return all_translated_batches
+
 # Split each translated block into smaller chunks by strong punctuation,
 # calculate proportional time ranges, and return final subtitle blocks.
 def split_and_assign_translation(translated_batches, max_chars_per_block=28):
@@ -189,6 +244,10 @@ def split_and_assign_translation(translated_batches, max_chars_per_block=28):
 
             time_range = lines[0].strip()
             paragraph = "".join("".join(lines[1:]).split())  # Remove extra spaces/newlines
+
+            if "-->" not in time_range:
+                print(f"[WARNING] Skipping block with invalid time range: {time_range}")
+                continue  # Skip this block if it doesn't have a valid time range
 
             # Parse time range
             start_str, end_str = [s.strip() for s in time_range.split("-->")]

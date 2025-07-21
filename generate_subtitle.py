@@ -7,6 +7,7 @@ from translator import (
     load_gemini_api_key,
     setup_gemini,
     translate_groups,
+    translate_groups_deepseek,
     split_and_assign_translation,
     write_srt_file
 )
@@ -66,6 +67,7 @@ def main():
         groups = group_subtitles(srt_file)
         print(f"Loaded {len(groups)} subtitle groups.")
         translated_batches = translate_groups(groups, model, target_lang="Chinese")
+        #translated_batches = translate_groups_deepseek(groups, model_name="deepseek-r1:70b", target_lang="Chinese")
         final_blocks = split_and_assign_translation(translated_batches)
         write_srt_file(final_blocks, translated_srt)
         print("Translation complete.")
