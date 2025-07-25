@@ -1,6 +1,5 @@
 import subprocess
 import os
-import shutil  # <-- needed to remove folder
 
 # Map full language names to WhisperX-compatible codes
 LANGUAGE_CODE_MAP = {
@@ -15,10 +14,15 @@ LANGUAGE_CODE_MAP = {
     # Add more if needed
 }
 
-def transcribe_audio(audio_path, lang="English"):
+def transcribe_audio(audio_path, lang="English", output_srt_path=None):
     lang_code = LANGUAGE_CODE_MAP.get(lang.lower(), "en")
-    base_name = os.path.splitext(os.path.basename(audio_path))[0].replace("_audio", "")
-    output_dir = f"{base_name}_whisperx_output"
+
+    # Determine workspace directory from output path
+    if output_srt_path is None:
+        raise ValueError("You must provide output_srt_path.")
+
+    workspace_dir = os.path.dirname(os.path.abspath(output_srt_path))
+    base_name = os.path.splitext(os.path.basename(audio_path))[0]
 
     print("Running WhisperX using subprocess...")
 
@@ -29,7 +33,7 @@ def transcribe_audio(audio_path, lang="English"):
         "--language", lang_code,
         "--device", "cuda",
         "--output_format", "srt",
-        "--output_dir", output_dir
+        "--output_dir", workspace_dir
     ]
 
     result = subprocess.run(command, capture_output=True, text=True)
@@ -41,19 +45,11 @@ def transcribe_audio(audio_path, lang="English"):
 
     print("✅ WhisperX transcription complete.")
 
-    original_audio_name = os.path.splitext(os.path.basename(audio_path))[0]
-    output_srt = os.path.join(output_dir, f"{original_audio_name}.srt")
-    final_srt = f"{base_name}.srt"
-
-    if os.path.exists(output_srt):
-        os.rename(output_srt, final_srt)
-        print(f"✅ SRT file saved as: {final_srt}")
-
-        # Clean up the empty folder
-        try:
-            shutil.rmtree(output_dir)
-            print(f"🧹 Removed temporary folder: {output_dir}")
-        except Exception as e:
-            print(f"⚠️ Failed to remove temp folder: {e}")
+    # Rename the WhisperX output .srt to exact desired filename
+    generated_srt = os.path.join(workspace_dir, f"{base_name}.srt")
+    if os.path.exists(generated_srt):
+        if generated_srt != output_srt_path:
+            os.rename(generated_srt, output_srt_path)
+        print(f"✅ SRT file saved as: {output_srt_path}")
     else:
         print("❌ Expected SRT file not found.")

@@ -1,0 +1,6 @@
+{
+  "user_id_prefix": "user",
+  "workspace_root": "/tmp",
+  "final_output_path": "outputs",
+  "cleanup_temp": true
+}
