@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload Video</title>
+</head>
+<body>
+    <h1>Upload Your Video</h1>
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+        <label for="video">Choose an MP4 file:</label><br>
+        <input type="file" name="video" accept=".mp4" required><br><br>
+
+        <label for="lang">Target Language:</label>
+        <select name="lang">
+            <option value="English">English</option>
+            <option value="Chinese" selected>Chinese</option>
+        </select><br><br>
+
+        <input type="submit" value="Upload & Process">
+    </form>
+</body>
+</html>

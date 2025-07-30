@@ -15,7 +15,7 @@ from translator import (
     write_srt_file
 )
 
-def load_config(path="config.json"):
+def load_config(path="project_files/config.json"):
    with open(path, "r") as f:
       return json.load(f)
 

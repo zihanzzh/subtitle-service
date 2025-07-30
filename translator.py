@@ -114,7 +114,7 @@ def group_subtitles(
     return grouped_results
 
 # Setup Gemini
-def load_gemini_api_key(path="gemini_key.txt"):
+def load_gemini_api_key(path="project_files/gemini_key.txt"):
     with open(path, "r") as f:
         return f.read().strip()
 
