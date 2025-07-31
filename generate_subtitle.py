@@ -50,7 +50,9 @@ def main():
   parser = argparse.ArgumentParser(description = "Generate subtitles for a video")
   parser.add_argument('--input', nargs='+', required=True, help="path to input video file")
   parser.add_argument('--lang', default='English', help="target subtitle language")
+  parser.add_argument('--task_id', required=True, help="unique task ID from frontend")
   args = parser.parse_args()
+  task_id = args.task_id
 
   # Load configuration
   config = load_config()
@@ -64,9 +66,7 @@ def main():
   model = setup_gemini(api_key)
 
   for input_video in args.input:
-        # Generate unique workspace ID
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        task_id = f"{prefix}_{timestamp}"
+        # create workspace  
         workspace_dir = os.path.join(workspace_root, task_id)
         os.makedirs(workspace_dir, exist_ok=True)
         print(f"\n[Workspace] Created: {workspace_dir}")
@@ -77,12 +77,16 @@ def main():
         shutil.copy2(input_video, workspace_input)
 
         # Build all paths
-        base_name = os.path.splitext(input_base)[0]
+        # Strip the task_id prefix from the filename if it starts with it
+        if input_base.startswith(f"{task_id}-"):
+          base_name = os.path.splitext(input_base[len(f"{task_id}-"):])[0]
+        else:
+          base_name = os.path.splitext(input_base)[0]
         audio_file = os.path.join(workspace_dir, f"{base_name}_audio.aac")
         srt_file = os.path.join(workspace_dir, f"{base_name}.srt")
         translated_srt = os.path.join(workspace_dir, f"{base_name}_translated.srt")
         workspace_output = os.path.join(workspace_dir, f"{base_name}_cn.mp4")
-        final_output_name = f"{task_id}-cn.mp4"
+        final_output_name = f"{task_id}-{base_name}-cn.mp4"
         final_output = os.path.join(final_output_path, final_output_name)
 
         print(f"[Start] Processing: {input_video}")

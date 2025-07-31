@@ -4,6 +4,7 @@ import os
 import time
 import random
 import json
+import concurrent.futures
 import http.client
 
 # time conversion
@@ -120,7 +121,7 @@ def load_gemini_api_key(path="project_files/gemini_key.txt"):
 
 def setup_gemini(api_key):
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel("models/gemini-2.0-flash-lite")
+    return genai.GenerativeModel("models/gemini-2.5-flash-lite")
 
 # Translates grouped subtitles in batches
 # Each group keeps its time range and combined lines.
