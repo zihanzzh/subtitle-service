@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, send_from_directory
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime, timezone
 import os
 import time
 import subprocess
@@ -6,6 +8,22 @@ import sys
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+
+# Configure database
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///subtitle_tasks.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+# Upload Table Model
+class Upload(db.Model):
+    id = db.Column(db.String, primary_key=True)  # task_id
+    original_filename = db.Column(db.String, nullable=False)
+    final_filename = db.Column(db.String, nullable=False)
+    upload_time = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    status = db.Column(db.String, default='Processing')
+    language = db.Column(db.String, nullable=False)
+    download_path = db.Column(db.String, nullable=False)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -44,11 +62,22 @@ def upload():
         except subprocess.CalledProcessError as e:
             print(f"❌ Failed to run subtitle generation: {e}")
 
-
         # Extract output filename (same as input, but saved in outputs/)
         final_output_name = f"{task_id}-{original_filename[:-4]}-cn.mp4"  # remove .mp4 then add -cn.mp4
-        print("🧾 Output filename:", final_output_name)
-        print("📁 Should exist at:", os.path.join("outputs", final_output_name))
+
+        # Record to database
+        new_upload = Upload(
+            id=task_id,
+            original_filename=original_filename,
+            final_filename=final_output_name,
+            upload_time=datetime.now(timezone.utc),
+            status="Completed", 
+            language=language,
+            download_path=final_output_name
+        )
+        db.session.add(new_upload)
+        db.session.commit()
+
         return render_template("result.html", output_filename=final_output_name)
     
     return render_template("upload.html")
@@ -60,4 +89,6 @@ def download_file(filename):
 
 
 if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)

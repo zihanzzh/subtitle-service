@@ -1,0 +1,75 @@
+/* General Page Styling */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(120deg, #f0f4ff, #e0f7fa);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Title animation */
+h1 {
+  font-size: 3rem;
+  color: #0d47a1;
+  animation: fadeInDown 1s ease-out;
+  margin-bottom: 0.5rem;
+}
+
+p {
+  font-size: 1.2rem;
+  color: #555;
+  margin-bottom: 2rem;
+  animation: fadeIn 2s ease;
+}
+
+/* Button styling */
+.btn-main {
+  padding: 12px 28px;
+  font-size: 1.1rem;
+  border-radius: 8px;
+  border: none;
+  background-color: #1976d2;
+  color: white;
+  text-decoration: none;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.btn-main:hover {
+  background-color: #0d47a1;
+  transform: scale(1.05);
+}
+
+/* Form */
+form {
+  width: 90%;
+  max-width: 500px;
+  background: #ffffffcc;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Animation keyframes */
+@keyframes fadeInDown {
+  from {
+      opacity: 0;
+      transform: translateY(-40px);
+  }
+  to {
+      opacity: 1;
+      transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+      opacity: 0;
+  }
+  to {
+      opacity: 1;
+  }
+}
