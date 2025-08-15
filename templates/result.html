@@ -7,10 +7,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-    <div class="container text-center mt-5">
-        <h2 class="mb-3" style="animation: fadeInDown 1s ease-out;">Your video has been processed!</h2>
-        <p class="lead" style="animation: fadeIn 1.5s ease;">Click below to download your subtitled video:</p>
-        <a href="{{ url_for('download_file', filename=output_filename) }}" class="btn-main mt-3">Download MP4</a>
+    <div class="container text-center">
+        <h2 class="mb-3">Your video has been processed!</h2>
+        <p class="lead">Click below to download your subtitled video:</p>
+
+        {% if output_filename %}
+            <a href="{{ url_for('download_file', filename=output_filename) }}" class="btn-main">Download MP4</a>
+        {% else %}
+            <div class="alert alert-danger mt-3">Sorry, we couldn't find your processed video.</div>
+        {% endif %}
     </div>
 </body>
 </html>

@@ -5,11 +5,26 @@
     <title>Upload Video</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+        #progressSection {
+            display: none;
+            margin-top: 30px;
+        }
+        #statusText {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-5 text-center">
         <h1 class="mb-4" style="animation: fadeInDown 1s ease-out;">Upload Your Video</h1>
-        <form action="/upload" method="POST" enctype="multipart/form-data" style="animation: fadeIn 1.5s ease;">
+        <form id="uploadForm" action="/upload" method="POST" enctype="multipart/form-data" style="animation: fadeIn 1.5s ease;">
             <div class="mb-3">
                 <label for="video" class="form-label">Choose an MP4 file:</label>
                 <input type="file" name="video" class="form-control" accept=".mp4" required>
@@ -25,6 +40,64 @@
 
             <button type="submit" class="btn-main">Upload & Process</button>
         </form>
+
+        <div id="progressSection">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div id="statusText">Uploading video...</div>
+            <div class="progress mt-4" style="height: 25px;">
+                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                     role="progressbar" style="width: 0%">0%</div>
+            </div>
+        </div>
     </div>
+
+    <script>
+        const form = document.getElementById("uploadForm");
+        const progressSection = document.getElementById("progressSection");
+        const progressBar = document.getElementById("progressBar");
+        const statusText = document.getElementById("statusText");
+
+        // Progress tracking logic after redirect
+        const urlParams = new URLSearchParams(window.location.search);
+        const taskId = urlParams.get("task_id");
+
+        if (taskId) {
+            progressSection.style.display = "block";
+            const statusStages = [
+                { status: "Extracting audio...", percent: 10 },
+                { status: "Transcribing audio...", percent: 25 },
+                { status: "Translating subtitles...", percent: 50 },
+                { status: "Burning subtitles...", percent: 75 },
+                { status: "Finalizing output...", percent: 90 },
+                { status: "Completed", percent: 100 }
+            ];
+
+            function updateProgress(currentStatus) {
+                const stage = statusStages.find(s => s.status === currentStatus);
+                const percent = stage ? stage.percent : 0;
+
+                progressBar.style.width = percent + "%";
+                progressBar.textContent = percent + "%";
+                statusText.textContent = currentStatus + "...";
+            }
+
+            async function checkProgress() {
+                const res = await fetch(`/status/${taskId}`);
+                const data = await res.json();
+                updateProgress(data.status);
+
+                if (data.status !== "Completed") {
+                    setTimeout(checkProgress, 2000);
+                } else {
+                    statusText.textContent = "Finished! Redirecting to download page...";
+                    setTimeout(() => {
+                        window.location.href = `/result/${taskId}`;
+                    }, 3000);
+                }
+            }
+
+            checkProgress();
+        }
+    </script>
 </body>
 </html>

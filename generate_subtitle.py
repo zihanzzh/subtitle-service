@@ -15,6 +15,10 @@ from translator import (
     write_srt_file
 )
 
+# import database model and app context
+from app import db, Upload, app
+
+
 def load_config(path="project_files/config.json"):
    with open(path, "r") as f:
       return json.load(f)
@@ -44,6 +48,13 @@ def burn_subtitles_to_video(input_video, srt_file, output_video):
         print(f"Subtitles burned successfully! Final video: {output_video}")
     else:
         print(f"FFmpeg failed:\n{result.stderr}")
+
+def update_status(task_id, new_status):
+   with app.app_context():
+      task = db.session.get(Upload, task_id)
+      if task:
+         task.status = new_status
+         db.session.commit()
   
 def main():
   #create a command-line parser
@@ -91,11 +102,14 @@ def main():
 
         print(f"[Start] Processing: {input_video}")
         # Step 1: Extract audio
+        update_status(task_id, "Extracting audio...")
         extract_audio(workspace_input, audio_file)
         # Step 2: Transcribe to .srt
+        update_status(task_id, "Transcribing audio...")
         transcribe_audio(audio_file, lang=args.lang, output_srt_path=srt_file)
 
         # Step 3: Translate subtitles
+        update_status(task_id, "Translating subtitles...")
         groups = group_subtitles(srt_file)
         print(f"Loaded {len(groups)} subtitle groups.")
         translated_batches = translate_groups(groups, model, target_lang="Chinese")
@@ -105,9 +119,11 @@ def main():
         print("Translation complete.")
 
         # Step 4: Burn subtitles
+        update_status(task_id, "Burning subtitles...")
         burn_subtitles_to_video(workspace_input, translated_srt, workspace_output)
 
         # Export final video
+        update_status(task_id, "Finalizing output...")
         os.makedirs(final_output_path, exist_ok=True)
         shutil.copy2(workspace_output, final_output)
         print(f"[Output] Final video exported to: {final_output}")
@@ -117,8 +133,7 @@ def main():
             shutil.rmtree(workspace_dir)
             print(f"[Cleanup] Removed temp workspace: {workspace_dir}")
 
-
-
+        update_status(task_id, "Completed")
 
 
 if __name__ == "__main__":

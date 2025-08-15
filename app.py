@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_from_directory
+from flask import Flask, render_template, request, send_from_directory, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone
 import os
@@ -44,49 +44,48 @@ def upload():
 
         # Save video
         original_filename = secure_filename(video_file.filename)
-        save_filename = f"{task_id}-{original_filename}"  
+        save_filename = f"{task_id}-{original_filename}"
         save_path = os.path.join(UPLOAD_FOLDER, save_filename)
         video_file.save(save_path)
 
-        print("✅ Video saved to:", save_path)
-        print("🗣️ Language selected:", language)
-        print("📁 Task ID:", task_id)
-
-        # Run generate_subtitle.py
-        try:
-            subprocess.run(
-                [sys.executable, "generate_subtitle.py", "--input", save_path, "--task_id", task_id],
-                check=True
-            )
-            print("✅ Subtitle generation completed.")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Failed to run subtitle generation: {e}")
-
-        # Extract output filename (same as input, but saved in outputs/)
-        final_output_name = f"{task_id}-{original_filename[:-4]}-cn.mp4"  # remove .mp4 then add -cn.mp4
-
-        # Record to database
+        # Create task entry in database (status starts as 'Processing')
+        final_output_name = f"{task_id}-{original_filename[:-4]}-cn.mp4"
         new_upload = Upload(
             id=task_id,
             original_filename=original_filename,
             final_filename=final_output_name,
-            upload_time=datetime.now(timezone.utc),
-            status="Completed", 
             language=language,
             download_path=final_output_name
         )
         db.session.add(new_upload)
         db.session.commit()
 
-        return render_template("result.html", output_filename=final_output_name)
-    
+        # Start background processing
+        subprocess.Popen(
+            [sys.executable, "generate_subtitle.py", "--input", save_path, "--task_id", task_id],
+        )
+
+        return redirect(url_for("upload", task_id=task_id))
+
     return render_template("upload.html")
+
+@app.route("/status/<task_id>")
+def check_status(task_id):
+    upload = db.session.get(Upload, task_id)
+    if upload:
+        return {"status": upload.status, "output_filename": upload.final_filename}
+    return {"status": "Unknown"}
+
+@app.route("/result/<task_id>")
+def result(task_id):
+    upload = db.session.get(Upload, task_id)
+    if not upload:
+        return "Task not found", 404
+    return render_template("result.html", output_filename=upload.final_filename)
 
 @app.route("/download/<filename>")
 def download_file(filename):
     return send_from_directory("outputs", filename, as_attachment=True)
-
-
 
 if __name__ == "__main__":
     with app.app_context():
